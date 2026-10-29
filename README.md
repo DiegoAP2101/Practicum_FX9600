@@ -1,4 +1,6 @@
-# FX9600 Reading Demo
+# Practicum_FX9600 · FX9600 Reading Demo
+
+Conexión a lectora Zebra FX9600 mediante LLRP para Practicum "Trazabilidad de activos variables mediante RFID UHF".
 
 Base cliente-servidor para leer tags RFID desde una **Zebra FX9600** y verlos en una
 tabla web local en tiempo real. Pensada como fundación para futuras aplicaciones:
