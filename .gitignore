@@ -1,0 +1,10 @@
+# Clases compiladas (se regeneran con build.bat)
+out/
+
+# CSVs grabados en cada sesion de lectura
+capturas/
+
+# IDE
+.vscode/
+.idea/
+*.iml

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FX9600 · Lectura de tags</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --ink: #1a2230;
+    --ink-soft: #5a6675;
+    --line: #e2e6ec;
+    --accent: #0b6bcb;
+    --ok: #1a7f37;
+    --ok-soft: #e3f4e8;
+    --bad: #b42318;
+    --bad-soft: #fdecea;
+    --warn: #955d00;
+    --warn-soft: #fdf3e1;
+    --mono: "Cascadia Mono", "Consolas", "Courier New", monospace;
+    --flash: #eaf3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+  }
+
+  header {
+    background: #10161f;
+    color: #fff;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: .3px;
+  }
+  header h1 span { color: #7fb3e8; font-weight: 700; }
+  .source {
+    color: #9aa7b8;
+    font-size: 12.5px;
+    font-family: var(--mono);
+  }
+  .pill {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 13px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    background: #2a3342;
+    color: #c3ccd8;
+  }
+  .pill .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #8b95a3;
+  }
+  .pill.ok   { background: #12351d; color: #7be09a; }
+  .pill.ok .dot { background: #34c05e; box-shadow: 0 0 6px #34c05e; }
+  .pill.bad  { background: #3d1512; color: #f2988f; }
+  .pill.bad .dot { background: #ef5b4d; }
+
+  main { padding: 20px 24px 32px; max-width: 1600px; margin: 0 auto; }
+
+  .banner {
+    display: none;
+    background: var(--bad-soft);
+    color: var(--bad);
+    border: 1px solid #f3c2bc;
+    border-left: 4px solid var(--bad);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+  }
+  .banner.show { display: block; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(16, 22, 31, .05);
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    padding: 6px 20px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    padding: 12px 28px 12px 0;
+    margin-right: 28px;
+    border-right: 1px solid var(--line);
+  }
+  .stat:last-of-type { border-right: 0; }
+  .stat .value {
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .label {
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin-top: 2px;
+  }
+  .stat.clock .value { font-family: var(--mono); font-size: 28px; padding-top: 5px; }
+
+  .actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  button {
+    font: inherit;
+    font-weight: 600;
+    padding: 9px 22px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+    transition: background .15s, transform .05s, box-shadow .15s;
+  }
+  button:hover:not(:disabled) { background: #f0f3f7; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: .45; cursor: default; }
+  #btnStart {
+    background: var(--ok);
+    border-color: var(--ok);
+    color: #fff;
+  }
+  #btnStart:hover:not(:disabled) { background: #17692e; }
+  #btnStop {
+    background: var(--bad);
+    border-color: var(--bad);
+    color: #fff;
+  }
+  #btnStop:hover:not(:disabled) { background: #97180e; }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 1250px;
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: #eef1f5;
+    color: #46536a;
+    text-align: left;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    padding: 9px 12px;
+    border-bottom: 2px solid #d7dde5;
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  tbody tr:hover { background: #f6f8fb; }
+  tbody tr.fresh { background: var(--flash); }
+  td.epc { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  td.num { text-align: right; }
+  .state {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .state.New        { background: var(--ok-soft); color: var(--ok); }
+  .state.Back       { background: #e8f0fb; color: var(--accent); }
+  .state.Gone       { background: #eceff3; color: var(--ink-soft); }
+  .state.Moving     { background: var(--warn-soft); color: var(--warn); }
+  .state.Stationary { background: #efeafa; color: #5b3fa8; }
+  .state.None       { background: #eceff3; color: var(--ink-soft); }
+
+  .rssi-cell { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .rssi-bar {
+    width: 52px; height: 6px;
+    background: #e6eaef;
+    border-radius: 3px;
+    overflow: hidden;
+    flex: none;
+  }
+  .rssi-bar i {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, #d5493a, #e0a13c 45%, #2f9e52);
+    border-radius: 3px;
+  }
+
+  .empty {
+    padding: 48px 20px;
+    text-align: center;
+    color: var(--ink-soft);
+  }
+  .empty b { color: var(--ink); }
+
+  footer {
+    margin-top: 14px;
+    color: var(--ink-soft);
+    font-size: 12px;
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  footer code { font-family: var(--mono); background: #e9edf2; padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>FX9600</span> · Lectura de tags</h1>
+  <div class="source" id="sourceDesc">—</div>
+  <div class="pill" id="connPill"><span class="dot"></span><span id="connText">Conectando…</span></div>
+</header>
+
+<main>
+  <div class="banner" id="banner"></div>
+
+  <div class="panel toolbar">
+    <div class="stat">
+      <div class="value" id="statTags">0</div>
+      <div class="label">Tags únicos</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statReads">0</div>
+      <div class="label">Lecturas</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statRate">0</div>
+      <div class="label">Lecturas / seg</div>
+    </div>
+    <div class="stat clock">
+      <div class="value" id="statClock">00:00:00:000</div>
+      <div class="label">Tiempo de lectura</div>
+    </div>
+    <div class="actions">
+      <button id="btnStart">▶ Iniciar</button>
+      <button id="btnStop" disabled>■ Detener</button>
+      <button id="btnClear">Limpiar</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>EPC</th>
+            <th>Estado</th>
+            <th>Antena</th>
+            <th style="text-align:right">Lecturas</th>
+            <th style="text-align:right">RSSI (dBm)</th>
+            <th style="text-align:right">Fase (°)</th>
+            <th style="text-align:right">Canal</th>
+            <th>PC</th>
+            <th>CRC</th>
+            <th>XPC W1</th>
+            <th>XPC W2</th>
+            <th>Primera vista</th>
+            <th>Última vista</th>
+            <th>1ª vista (lector)</th>
+            <th>Últ. vista (lector)</th>
+          </tr>
+        </thead>
+        <tbody id="tagRows"></tbody>
+      </table>
+      <div class="empty" id="emptyMsg">
+        Sin lecturas todavía. Presiona <b>▶ Iniciar</b> para comenzar el inventario.
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>API para otros aplicativos: <code>GET /api/tags</code> · <code>POST /api/start</code> · <code>POST /api/stop</code> · <code>POST /api/clear</code></span>
+    <span>Configuración: <code>config.properties</code></span>
+  </footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var POLL_MS = 250;
+  var RATE_WINDOW = 8;          // muestras para promediar lecturas/seg
+  var FRESH_MS = 900;           // resaltar filas vistas hace < 900 ms
+
+  var els = {
+    pill: document.getElementById("connPill"),
+    connText: document.getElementById("connText"),
+    sourceDesc: document.getElementById("sourceDesc"),
+    banner: document.getElementById("banner"),
+    tags: document.getElementById("statTags"),
+    reads: document.getElementById("statReads"),
+    rate: document.getElementById("statRate"),
+    clock: document.getElementById("statClock"),
+    rows: document.getElementById("tagRows"),
+    empty: document.getElementById("emptyMsg"),
+    btnStart: document.getElementById("btnStart"),
+    btnStop: document.getElementById("btnStop"),
+    btnClear: document.getElementById("btnClear")
+  };
+
+  var rateSamples = [];         // {t, total}
+  var lastStatus = null;
+  var lastPollAt = 0;
+
+  function fmtInt(n) {
+    return Number(n).toLocaleString("es-MX");
+  }
+
+  function fmtClock(ms) {
+    var h = Math.floor(ms / 3600000);
+    var m = Math.floor(ms / 60000) % 60;
+    var s = Math.floor(ms / 1000) % 60;
+    var r = ms % 1000;
+    function p(v, w) { return String(v).padStart(w, "0"); }
+    return p(h, 2) + ":" + p(m, 2) + ":" + p(s, 2) + ":" + p(r, 3);
+  }
+
+  function fmtTime(epochMs) {
+    if (!epochMs) return "—";
+    var d = new Date(epochMs);
+    function p(v, w) { return String(v).padStart(w, "0"); }
+    return p(d.getHours(), 2) + ":" + p(d.getMinutes(), 2) + ":" + p(d.getSeconds(), 2)
+         + "." + p(d.getMilliseconds(), 3);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function rssiPercent(dbm) {
+    // rango tipico FX9600: -30 (muy fuerte) a -80 (muy debil)
+    var pct = (dbm + 80) / 50 * 100;
+    return Math.max(3, Math.min(100, pct));
+  }
+
+  function updateRate(status) {
+    rateSamples.push({ t: Date.now(), total: status.totalReads });
+    if (rateSamples.length > RATE_WINDOW) rateSamples.shift();
+    if (rateSamples.length < 2) return 0;
+    var first = rateSamples[0];
+    var last = rateSamples[rateSamples.length - 1];
+    var dt = last.t - first.t;
+    if (dt <= 0) return 0;
+    var rate = (last.total - first.total) / dt * 1000;
+    return Math.max(0, Math.round(rate));
+  }
+
+  function render(data) {
+    var st = data.status;
+    lastStatus = st;
+    lastPollAt = Date.now();
+
+    // estado de conexion
+    els.sourceDesc.textContent = st.source;
+    els.pill.className = "pill " + (st.connected ? "ok" : "bad");
+    els.connText.textContent = st.connected
+      ? (st.reading ? "Leyendo" : "Conectado")
+      : "Sin conexión";
+
+    // banner de error
+    if (!st.connected && st.error) {
+      els.banner.textContent = st.error;
+      els.banner.classList.add("show");
+    } else {
+      els.banner.classList.remove("show");
+    }
+
+    // botones
+    els.btnStart.disabled = st.reading;
+    els.btnStop.disabled = !st.reading;
+
+    // stats
+    els.tags.textContent = fmtInt(st.uniqueTags);
+    els.reads.textContent = fmtInt(st.totalReads);
+    els.rate.textContent = fmtInt(updateRate(st));
+
+    // tabla
+    var now = Date.now();
+    var html = "";
+    for (var i = 0; i < data.tags.length; i++) {
+      var t = data.tags[i];
+      var fresh = (now - t.lastSeenMs) < FRESH_MS;
+      html += '<tr class="' + (fresh ? "fresh" : "") + '">'
+        + '<td class="epc">' + esc(t.epc) + "</td>"
+        + '<td><span class="state ' + esc(t.state) + '">' + esc(t.state) + "</span></td>"
+        + '<td class="num">' + t.antennaId + "</td>"
+        + '<td class="num">' + fmtInt(t.seenCount) + "</td>"
+        + '<td class="num"><span class="rssi-cell"><span class="rssi-bar"><i style="width:'
+            + rssiPercent(t.peakRssi) + '%"></i></span>' + t.peakRssi + "</span></td>"
+        + '<td class="num">' + t.phaseDeg.toFixed(2) + "</td>"
+        + '<td class="num">' + t.channelIndex + "</td>"
+        + "<td>" + esc(t.pc) + "</td>"
+        + "<td>" + esc(t.crc) + "</td>"
+        + "<td>" + esc(t.xpcW1) + "</td>"
+        + "<td>" + esc(t.xpcW2) + "</td>"
+        + "<td>" + fmtTime(t.firstSeenMs) + "</td>"
+        + "<td>" + fmtTime(t.lastSeenMs) + "</td>"
+        + "<td>" + (t.readerFirstSeenUtc ? esc(t.readerFirstSeenUtc) : "—") + "</td>"
+        + "<td>" + (t.readerLastSeenUtc ? esc(t.readerLastSeenUtc) : "—") + "</td>"
+        + "</tr>";
+    }
+    els.rows.innerHTML = html;
+    els.empty.style.display = data.tags.length ? "none" : "";
+  }
+
+  function renderClock() {
+    if (!lastStatus) return;
+    var ms = lastStatus.elapsedMs;
+    if (lastStatus.reading) ms += Date.now() - lastPollAt;
+    els.clock.textContent = fmtClock(ms);
+  }
+
+  function poll() {
+    fetch("/api/tags")
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () {
+        els.pill.className = "pill bad";
+        els.connText.textContent = "Servidor no disponible";
+        els.banner.textContent = "No se pudo contactar al servidor local. ¿Sigue corriendo la aplicación?";
+        els.banner.classList.add("show");
+      });
+  }
+
+  function action(name) {
+    fetch("/api/" + name, { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok && res.error) {
+          els.banner.textContent = res.error;
+          els.banner.classList.add("show");
+        } else {
+          els.banner.classList.remove("show");
+        }
+        poll();
+      })
+      .catch(function () { /* el siguiente poll reporta el estado */ });
+  }
+
+  els.btnStart.addEventListener("click", function () { action("start"); });
+  els.btnStop.addEventListener("click", function () { action("stop"); });
+  els.btnClear.addEventListener("click", function () { action("clear"); });
+
+  poll();
+  setInterval(poll, POLL_MS);
+  setInterval(renderClock, 33);
+})();
+</script>
+</body>
+</html>
