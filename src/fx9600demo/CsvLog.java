@@ -49,6 +49,11 @@ public final class CsvLog {
         out = null;
     }
 
+    /** true mientras hay un archivo abierto. */
+    public synchronized boolean isRecording() {
+        return out != null;
+    }
+
     // ponytail: sin comillas/escape, todos los campos son hex, numeros o fechas sin comas
     public synchronized void write(long nowMs, TagStore.Read r) {
         if (out == null) {

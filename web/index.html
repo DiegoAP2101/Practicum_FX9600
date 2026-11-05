@@ -156,6 +156,19 @@
     color: #fff;
   }
   #btnStop:hover:not(:disabled) { background: #97180e; }
+  .csv-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    user-select: none;
+  }
+  .csv-toggle input { width: 16px; height: 16px; accent-color: var(--ok); cursor: pointer; }
+  .csv-toggle input:disabled { cursor: default; }
+  .csv-toggle .rec { display: none; color: var(--bad); font-weight: 600; }
+  .csv-toggle .rec.on { display: inline; }
 
   .table-wrap {
     overflow-x: auto;
@@ -318,6 +331,10 @@
       <div class="label">Tiempo de lectura</div>
     </div>
     <div class="actions">
+      <label class="csv-toggle" title="Se aplica al presionar Iniciar">
+        <input type="checkbox" id="chkCsv" checked> Guardar CSV
+        <span class="rec" id="csvRec">● grabando</span>
+      </label>
       <button id="btnStart">▶ Iniciar</button>
       <button id="btnStop" disabled>■ Detener</button>
       <button id="btnClear">Limpiar</button>
@@ -406,6 +423,8 @@
     btnStop: document.getElementById("btnStop"),
     btnClear: document.getElementById("btnClear"),
     antRows: document.getElementById("antRows"),
+    chkCsv: document.getElementById("chkCsv"),
+    csvRec: document.getElementById("csvRec"),
     windowSec: document.getElementById("windowSec"),
     unzoned: document.getElementById("unzoned")
   };
@@ -655,6 +674,8 @@
     // botones
     els.btnStart.disabled = st.reading;
     els.btnStop.disabled = !st.reading;
+    els.chkCsv.disabled = st.reading; // la decision se toma al iniciar
+    els.csvRec.classList.toggle("on", !!st.csv);
 
     // stats
     els.tags.textContent = fmtInt(st.uniqueTags);
@@ -716,7 +737,9 @@
   }
 
   function action(name) {
-    fetch("/api/" + name, { method: "POST" })
+    var url = "/api/" + name;
+    if (name === "start" && !els.chkCsv.checked) url += "?csv=0";
+    fetch(url, { method: "POST" })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res.ok && res.error) {
@@ -731,6 +754,10 @@
   }
 
   els.btnStart.addEventListener("click", function () { action("start"); });
+  try { els.chkCsv.checked = localStorage.getItem("fx9600.csv") !== "0"; } catch (e) { /* default: guardar */ }
+  els.chkCsv.addEventListener("change", function () {
+    try { localStorage.setItem("fx9600.csv", els.chkCsv.checked ? "1" : "0"); } catch (e) { /* solo conveniencia */ }
+  });
   els.btnStop.addEventListener("click", function () { action("stop"); });
   els.btnClear.addEventListener("click", function () { action("clear"); });
   els.antRows.addEventListener("change", onCfgInput);

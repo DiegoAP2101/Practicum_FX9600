@@ -100,7 +100,10 @@ public final class WebServer {
                     if (!source.isConnected()) {
                         source.connect();
                     }
-                    store.csv.start();
+                    // ?csv=0 lee sin grabar archivo; por defecto se graba (compatible con la API original)
+                    if (!"0".equals(queryParam(ex.getRequestURI().getQuery(), "csv"))) {
+                        store.csv.start();
+                    }
                     try {
                         source.startReading();
                     } catch (Exception e) {
@@ -212,6 +215,7 @@ public final class WebServer {
         sb.append("{\"status\":{");
         Json.field(sb, "connected", source.isConnected()).append(',');
         Json.field(sb, "reading", source.isReading()).append(',');
+        Json.field(sb, "csv", store.csv.isRecording()).append(',');
         Json.field(sb, "source", source.description()).append(',');
         Json.field(sb, "error", source.lastError()).append(',');
         Json.field(sb, "uniqueTags", store.uniqueTagCount()).append(',');
