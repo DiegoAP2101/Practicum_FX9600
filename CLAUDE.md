@@ -54,6 +54,20 @@ El simulador genera ~120 lecturas/s (configurable en `config.properties`, `sim.*
 - `Json` — serializador JSON mínimo hecho a mano.
 - `web/index.html` — HTML/CSS/JS vanilla, sin CDNs ni frameworks.
 
+## Zonas (esta copia)
+
+- `TagRecord` guarda por antena (1..8) las últimas 20 lecturas de RSSI (se descartan si la antena
+  no ve el tag en 2 s); en JSON `antennas:[{id,rssi,samples,lastSeenMs}]` con `rssi` = moda (empate → el más alto).
+- La clasificación se hace en `web/index.html` (`classify`): antenas vistas dentro de la ventana
+  y con RSSI ≥ mínimo de esa antena; gana la de mayor RSSI. Sin histéresis.
+- Mapa por defecto (plano): 1,3 → Zona 1 · 2,4,5,7 → Zona 2 · 6,8 → Zona 3. Zona, RSSI mínimo
+  y ventana se editan en la página y se guardan en `localStorage` del navegador.
+- El simulador usa 8 antenas y 30% de lecturas por la antena vecina (−8 dB) para probar el desempate.
+- Potencia TX por antena: `GET /api/power`, `POST /api/power?ant=N&dbm=X`. Se ajusta al nivel más
+  cercano de `ReaderCapabilities.getTransmitPowerLevelValues()` (centésimas de dBm) vía
+  `Config.Antennas.setAntennaRfConfig`. Si está leyendo, detiene y reanuda el inventario.
+  Vive en la lectora, no en el navegador. En el simulador, −1 dB de potencia = −1 dB de RSSI.
+
 ## Convenciones
 
 - Textos de UI, logs y mensajes de error en **español**; identificadores en inglés.

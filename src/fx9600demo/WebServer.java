@@ -48,6 +48,7 @@ public final class WebServer {
         server.createContext("/api/start", ex -> handleAction(ex, "start"));
         server.createContext("/api/stop", ex -> handleAction(ex, "stop"));
         server.createContext("/api/clear", ex -> handleAction(ex, "clear"));
+        server.createContext("/api/power", this::handlePower);
         server.setExecutor(Executors.newFixedThreadPool(2));
         server.start();
     }
@@ -133,6 +134,76 @@ public final class WebServer {
         Json.field(sb, "error", error);
         sb.append('}');
         sendText(ex, error.isEmpty() ? 200 : 500, "application/json", sb.toString());
+    }
+
+    /**
+     * GET  /api/power                 -> {ok, min, max, antennas:[{id, dbm}]}
+     * POST /api/power?ant=1&dbm=27.5  -> {ok, id, dbm} (dbm aplicado, ajustado a la tabla de la lectora)
+     */
+    private void handlePower(HttpExchange ex) throws IOException {
+        String method = ex.getRequestMethod();
+        StringBuilder sb = new StringBuilder(256);
+        try {
+            if ("GET".equals(method)) {
+                int[] levels = source.powerLevels();
+                int[] powers = source.antennaPowers();
+                sb.append('{');
+                Json.field(sb, "ok", true).append(',');
+                Json.field(sb, "min", levels.length == 0 ? 0 : levels[0] / 100.0).append(',');
+                Json.field(sb, "max", levels.length == 0 ? 0 : levels[levels.length - 1] / 100.0).append(',');
+                sb.append("\"antennas\":[");
+                for (int a = 1; a < powers.length; a++) {
+                    if (a > 1) {
+                        sb.append(',');
+                    }
+                    sb.append('{');
+                    Json.field(sb, "id", a).append(',');
+                    Json.field(sb, "dbm", powers[a] / 100.0);
+                    sb.append('}');
+                }
+                sb.append("]}");
+            } else if ("POST".equals(method)) {
+                String q = ex.getRequestURI().getQuery();
+                int ant = Integer.parseInt(queryParam(q, "ant"));
+                double dbm = Double.parseDouble(queryParam(q, "dbm"));
+                if (ant < 1 || ant > TagRecord.MAX_ANTENNA || Double.isNaN(dbm)) {
+                    throw new IllegalArgumentException("Antena o potencia invalida");
+                }
+                int applied = source.setAntennaPower(ant, (int) Math.round(dbm * 100));
+                sb.append('{');
+                Json.field(sb, "ok", true).append(',');
+                Json.field(sb, "id", ant).append(',');
+                Json.field(sb, "dbm", applied / 100.0);
+                sb.append('}');
+            } else {
+                sendText(ex, 405, "text/plain", "Metodo no permitido");
+                return;
+            }
+        } catch (Exception e) {
+            String error = e instanceof NumberFormatException ? "Parametros invalidos (ant, dbm)"
+                    : (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            sb.setLength(0);
+            sb.append('{');
+            Json.field(sb, "ok", false).append(',');
+            Json.field(sb, "error", error);
+            sb.append('}');
+            sendText(ex, 500, "application/json", sb.toString());
+            return;
+        }
+        sendText(ex, 200, "application/json", sb.toString());
+    }
+
+    /** Valor de un parametro del query string ("" si no esta). */
+    private static String queryParam(String query, String name) {
+        if (query != null) {
+            for (String pair : query.split("&")) {
+                int eq = pair.indexOf('=');
+                if (eq > 0 && pair.substring(0, eq).equals(name)) {
+                    return pair.substring(eq + 1);
+                }
+            }
+        }
+        return "";
     }
 
     private String buildSnapshotJson() {

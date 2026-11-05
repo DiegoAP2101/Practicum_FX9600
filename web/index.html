@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FX9600 · Lectura de tags</title>
+<title>FX9600 · Zonas</title>
 <style>
   :root {
     --bg: #f4f5f7;
@@ -223,6 +223,61 @@
   }
   .empty b { color: var(--ink); }
 
+  /* ---- zonas ---- */
+  .section-title {
+    margin: 22px 0 10px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  .ant-config { padding: 14px 20px; }
+  .ant-config table { min-width: 0; width: auto; }
+  .ant-config td, .ant-config th { padding: 5px 10px; }
+  .ant-config input, .ant-config select {
+    font: inherit;
+    padding: 4px 6px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    width: 86px;
+  }
+  .ant-config .window { margin-top: 10px; color: var(--ink-soft); font-size: 13px; }
+  .ant-config .window input { width: 64px; }
+  .zones {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+  @media (max-width: 1000px) { .zones { grid-template-columns: 1fr; } }
+  .zone { overflow: hidden; border-top: 5px solid var(--zc); }
+  .zone h2 {
+    margin: 0;
+    padding: 12px 16px;
+    font-size: 15px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    background: var(--zs);
+  }
+  .zone h2 b { font-size: 26px; font-variant-numeric: tabular-nums; color: var(--zc); }
+  .zone table { min-width: 0; }
+  .zone .empty { padding: 22px 12px; }
+  .z1 { --zc: #c23b3b; --zs: #fbeaea; }
+  .z2 { --zc: #2f8f46; --zs: #e6f5ea; }
+  .z3 { --zc: #4b4fc4; --zs: #ebebfa; }
+  .z0 { --zc: #8b95a3; --zs: #eceff3; }
+  .zone-tag {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    background: var(--zs);
+    color: var(--zc);
+  }
+  .unzoned { margin-top: 10px; color: var(--ink-soft); font-size: 12.5px; }
+
   footer {
     margin-top: 14px;
     color: var(--ink-soft);
@@ -237,7 +292,7 @@
 <body>
 
 <header>
-  <h1><span>FX9600</span> · Lectura de tags</h1>
+  <h1><span>FX9600</span> · Ubicación por zonas</h1>
   <div class="source" id="sourceDesc">—</div>
   <div class="pill" id="connPill"><span class="dot"></span><span id="connText">Conectando…</span></div>
 </header>
@@ -269,12 +324,35 @@
     </div>
   </div>
 
+  <div class="section-title">Antenas · zona y filtro de RSSI</div>
+  <div class="panel ant-config">
+    <table>
+      <thead><tr><th>Antena</th><th>Zona</th><th>RSSI mínimo (dBm)</th><th>Potencia TX (dBm)</th><th style="text-align:right">Mejor RSSI ahora*</th></tr></thead>
+      <tbody id="antRows"></tbody>
+    </table>
+    <div class="window">
+      Considerar lecturas de los últimos <input type="number" id="windowSec" min="0.5" step="0.5"> s.
+      El RSSI de cada antena es la moda de sus últimas 20 lecturas del tag. Si varias zonas ven el tag, gana la de mejor RSSI. *Mejor RSSI (moda) entre los tags que esa antena ve en la ventana.
+      <button id="btnReset" type="button" style="margin-left:10px;padding:4px 12px">Restaurar valores</button>
+    </div>
+  </div>
+
+  <div class="section-title">Tags por zona</div>
+  <div class="zones">
+    <div class="panel zone z1"><h2>Zona 1 <b id="cnt1">0</b></h2><div id="zone1"></div></div>
+    <div class="panel zone z2"><h2>Zona 2 <b id="cnt2">0</b></h2><div id="zone2"></div></div>
+    <div class="panel zone z3"><h2>Zona 3 <b id="cnt3">0</b></h2><div id="zone3"></div></div>
+  </div>
+  <div class="unzoned" id="unzoned"></div>
+
+  <div class="section-title">Detalle de lecturas</div>
   <div class="panel">
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>EPC</th>
+            <th>Zona</th>
             <th>Estado</th>
             <th>Antena</th>
             <th style="text-align:right">Lecturas</th>
@@ -326,8 +404,183 @@
     empty: document.getElementById("emptyMsg"),
     btnStart: document.getElementById("btnStart"),
     btnStop: document.getElementById("btnStop"),
-    btnClear: document.getElementById("btnClear")
+    btnClear: document.getElementById("btnClear"),
+    antRows: document.getElementById("antRows"),
+    windowSec: document.getElementById("windowSec"),
+    unzoned: document.getElementById("unzoned")
   };
+
+  // ---- Zonas ----
+  var ZONES = [1, 2, 3];
+  var NUM_ANT = 8;
+  // Arreglo fisico del plano: 1,3 en zona 1 · 2,4,5,7 en zona 2 · 6,8 en zona 3
+  var DEFAULT_CFG = {
+    windowSec: 3,
+    ant: {
+      1: { zone: 1, min: -70 }, 2: { zone: 2, min: -70 },
+      3: { zone: 1, min: -70 }, 4: { zone: 2, min: -70 },
+      5: { zone: 2, min: -70 }, 6: { zone: 3, min: -70 },
+      7: { zone: 2, min: -70 }, 8: { zone: 3, min: -70 }
+    }
+  };
+  var CFG_KEY = "fx9600.zonas.cfg";
+  var cfg = loadCfg();
+  var lastData = null;
+
+  function loadCfg() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(CFG_KEY));
+      if (saved && saved.ant && saved.windowSec > 0) return saved;
+    } catch (e) { /* sin almacenamiento: valores por defecto */ }
+    return JSON.parse(JSON.stringify(DEFAULT_CFG));
+  }
+
+  function saveCfg() {
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) { /* solo conveniencia */ }
+  }
+
+  function buildAntRows() {
+    var html = "";
+    for (var a = 1; a <= NUM_ANT; a++) {
+      var c = cfg.ant[a] || { zone: 0, min: -70 };
+      var opts = '<option value="0">— (ignorar)</option>';
+      ZONES.forEach(function (z) {
+        opts += '<option value="' + z + '"' + (c.zone === z ? " selected" : "") + ">Zona " + z + "</option>";
+      });
+      html += "<tr><td><b>" + a + "</b></td>"
+        + '<td><select data-ant="' + a + '" data-k="zone">' + opts + "</select></td>"
+        + '<td><input type="number" step="1" min="-100" max="0" value="' + c.min + '" data-ant="' + a + '" data-k="min"></td>'
+        + '<td><input type="number" step="0.1" id="power' + a + '" data-power="' + a + '" disabled title="Esperando conexión con la lectora"></td>'
+        + '<td class="num" id="antNow' + a + '">—</td></tr>';
+    }
+    els.antRows.innerHTML = html;
+    els.windowSec.value = cfg.windowSec;
+    loadPower();
+  }
+
+  // ---- Potencia de transmision (vive en la lectora, no en el navegador) ----
+  function showError(msg) {
+    els.banner.textContent = msg;
+    els.banner.classList.add("show");
+  }
+
+  function loadPower() {
+    fetch("/api/power")
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.error);
+        res.antennas.forEach(function (p) {
+          var input = document.getElementById("power" + p.id);
+          if (!input) return;
+          input.min = res.min;
+          input.max = res.max;
+          input.value = p.dbm.toFixed(1);
+          input.disabled = false;
+          input.title = "Rango " + res.min + " a " + res.max + " dBm";
+        });
+      })
+      .catch(function () { /* sin conexion: se reintenta al conectar */ });
+  }
+
+  function onPowerChange(el) {
+    var dbm = parseFloat(el.value);
+    if (isNaN(dbm)) return;
+    el.disabled = true;
+    fetch("/api/power?ant=" + el.dataset.power + "&dbm=" + dbm, { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.error);
+        el.value = res.dbm.toFixed(1); // valor real aplicado (ajustado a la tabla de la lectora)
+        els.banner.classList.remove("show");
+      })
+      .catch(function (err) {
+        showError("No se pudo cambiar la potencia: " + err.message);
+        loadPower();
+      })
+      .then(function () { el.disabled = false; });
+  }
+
+  function onCfgInput(e) {
+    var el = e.target;
+    if (el.dataset.power) {
+      onPowerChange(el);
+      return;
+    }
+    var v = parseFloat(el.value);
+    if (isNaN(v)) return;
+    if (el === els.windowSec) {
+      if (v > 0) cfg.windowSec = v;
+    } else if (el.dataset.ant) {
+      var a = el.dataset.ant;
+      cfg.ant[a] = cfg.ant[a] || { zone: 0, min: -70 };
+      cfg.ant[a][el.dataset.k] = v;
+    }
+    saveCfg();
+    if (lastData) render(lastData);
+  }
+
+  /**
+   * Zona de un tag: entre las antenas que lo vieron dentro de la ventana y cuyo RSSI
+   * pasa el filtro de esa antena, gana la de mayor RSSI. null = sin zona.
+   * ponytail: sin histeresis; si un tag en la frontera parpadea entre zonas, agregar
+   * un margen (cambiar de zona solo si la nueva supera por > 3 dB).
+   */
+  function classify(tag, nowMs) {
+    var best = null;
+    var windowMs = cfg.windowSec * 1000;
+    var ants = tag.antennas || [];
+    for (var i = 0; i < ants.length; i++) {
+      var a = ants[i];
+      var c = cfg.ant[a.id];
+      if (!c || !c.zone) continue;
+      if (nowMs - a.lastSeenMs > windowMs) continue;
+      if (a.rssi < c.min) continue;
+      if (!best || a.rssi > best.rssi) best = { zone: c.zone, ant: a.id, rssi: a.rssi };
+    }
+    return best;
+  }
+
+  function renderZoneTable(z, list) {
+    document.getElementById("cnt" + z).textContent = list.length;
+    var box = document.getElementById("zone" + z);
+    if (!list.length) {
+      box.innerHTML = '<div class="empty">Sin tags</div>';
+      return;
+    }
+    list.sort(function (x, y) { return y.zoneInfo.rssi - x.zoneInfo.rssi; });
+    var html = "<table><thead><tr><th>EPC</th><th>Antena</th>"
+      + '<th style="text-align:right">RSSI</th><th>Última vista</th></tr></thead><tbody>';
+    list.forEach(function (t) {
+      html += '<tr><td class="epc">' + esc(t.epc) + "</td>"
+        + '<td class="num">' + t.zoneInfo.ant + "</td>"
+        + '<td class="num">' + t.zoneInfo.rssi + "</td>"
+        + "<td>" + fmtTime(t.lastSeenMs) + "</td></tr>";
+    });
+    box.innerHTML = html + "</tbody></table>";
+  }
+
+  function renderZones(tags, nowMs) {
+    var byZone = { 1: [], 2: [], 3: [] };
+    var antBest = {};
+    var unzoned = 0;
+    var windowMs = cfg.windowSec * 1000;
+    tags.forEach(function (t) {
+      (t.antennas || []).forEach(function (a) {
+        if (nowMs - a.lastSeenMs <= windowMs && (antBest[a.id] == null || a.rssi > antBest[a.id])) {
+          antBest[a.id] = a.rssi;
+        }
+      });
+      t.zoneInfo = classify(t, nowMs);
+      if (t.zoneInfo) byZone[t.zoneInfo.zone].push(t); else unzoned++;
+    });
+    ZONES.forEach(function (z) { renderZoneTable(z, byZone[z]); });
+    for (var a = 1; a <= NUM_ANT; a++) {
+      document.getElementById("antNow" + a).textContent = antBest[a] == null ? "—" : antBest[a];
+    }
+    els.unzoned.textContent = unzoned
+      ? unzoned + " tag(s) sin zona (no vistos en la ventana de tiempo o debajo del RSSI mínimo)."
+      : "";
+  }
 
   var rateSamples = [];         // {t, total}
   var lastStatus = null;
@@ -379,6 +632,8 @@
 
   function render(data) {
     var st = data.status;
+    lastData = data;
+    if (st.connected && !(lastStatus && lastStatus.connected)) loadPower(); // recien conectada
     lastStatus = st;
     lastPollAt = Date.now();
 
@@ -406,6 +661,9 @@
     els.reads.textContent = fmtInt(st.totalReads);
     els.rate.textContent = fmtInt(updateRate(st));
 
+    // zonas (reloj del servidor, el mismo de lastSeenMs)
+    renderZones(data.tags, st.serverTimeMs);
+
     // tabla
     var now = Date.now();
     var html = "";
@@ -414,6 +672,9 @@
       var fresh = (now - t.lastSeenMs) < FRESH_MS;
       html += '<tr class="' + (fresh ? "fresh" : "") + '">'
         + '<td class="epc">' + esc(t.epc) + "</td>"
+        + "<td>" + (t.zoneInfo
+            ? '<span class="zone-tag z' + t.zoneInfo.zone + '">Zona ' + t.zoneInfo.zone + "</span>"
+            : '<span class="zone-tag z0">—</span>') + "</td>"
         + '<td><span class="state ' + esc(t.state) + '">' + esc(t.state) + "</span></td>"
         + '<td class="num">' + t.antennaId + "</td>"
         + '<td class="num">' + fmtInt(t.seenCount) + "</td>"
@@ -472,6 +733,15 @@
   els.btnStart.addEventListener("click", function () { action("start"); });
   els.btnStop.addEventListener("click", function () { action("stop"); });
   els.btnClear.addEventListener("click", function () { action("clear"); });
+  els.antRows.addEventListener("change", onCfgInput);
+  els.windowSec.addEventListener("change", onCfgInput);
+  document.getElementById("btnReset").addEventListener("click", function () {
+    cfg = JSON.parse(JSON.stringify(DEFAULT_CFG));
+    saveCfg();
+    buildAntRows();
+    if (lastData) render(lastData);
+  });
+  buildAntRows();
 
   poll();
   setInterval(poll, POLL_MS);

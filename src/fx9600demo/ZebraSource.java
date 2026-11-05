@@ -1,6 +1,7 @@
 package fx9600demo;
 
 import com.mot.rfid.api3.ACCESS_OPERATION_CODE;
+import com.mot.rfid.api3.Antennas;
 import com.mot.rfid.api3.DISCONNECTION_EVENT_TYPE;
 import com.mot.rfid.api3.InvalidUsageException;
 import com.mot.rfid.api3.OperationFailureException;
@@ -167,6 +168,58 @@ public final class ZebraSource implements TagSource {
     @Override
     public String lastError() {
         return lastError;
+    }
+
+    @Override
+    public synchronized int[] powerLevels() throws Exception {
+        requireConnected();
+        return reader.ReaderCapabilities.getTransmitPowerLevelValues();
+    }
+
+    @Override
+    public synchronized int[] antennaPowers() throws Exception {
+        requireConnected();
+        int[] levels = powerLevels();
+        int n = reader.ReaderCapabilities.getNumAntennaSupported();
+        int[] out = new int[n + 1];
+        try {
+            for (int a = 1; a <= n; a++) {
+                int idx = reader.Config.Antennas.getAntennaRfConfig(a).getTransmitPowerIndex();
+                out[a] = (idx >= 0 && idx < levels.length) ? levels[idx] : 0;
+            }
+        } catch (InvalidUsageException e) {
+            throw new Exception(friendly("Error al leer potencia", e.getInfo(), e.getVendorMessage()), e);
+        } catch (OperationFailureException e) {
+            throw new Exception(friendly("Error al leer potencia", e.getStatusDescription(), e.getVendorMessage()), e);
+        }
+        return out;
+    }
+
+    @Override
+    public synchronized int setAntennaPower(int antenna, int centiDbm) throws Exception {
+        requireConnected();
+        int[] levels = powerLevels();
+        int idx = TagSource.nearestIndex(levels, centiDbm);
+        // La configuracion RF no se puede cambiar con el inventario corriendo
+        boolean wasReading = reading;
+        if (wasReading) {
+            stopReading();
+        }
+        try {
+            Antennas.AntennaRfConfig rf = reader.Config.Antennas.getAntennaRfConfig(antenna);
+            rf.setTransmitPowerIndex(idx);
+            reader.Config.Antennas.setAntennaRfConfig(antenna, rf);
+            System.out.println("[reader] Antena " + antenna + " -> " + (levels[idx] / 100.0) + " dBm");
+        } catch (InvalidUsageException e) {
+            throw new Exception(friendly("Error al ajustar potencia de antena " + antenna, e.getInfo(), e.getVendorMessage()), e);
+        } catch (OperationFailureException e) {
+            throw new Exception(friendly("Error al ajustar potencia de antena " + antenna, e.getStatusDescription(), e.getVendorMessage()), e);
+        } finally {
+            if (wasReading) {
+                startReading();
+            }
+        }
+        return levels[idx];
     }
 
     private static String friendly(String base, String detail, String vendor) {
